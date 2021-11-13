@@ -1,0 +1,100 @@
+#install needeed packages
+
+ipak <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg)) 
+    install.packages(new.pkg, dependencies = TRUE)
+  sapply(pkg, require, character.only = TRUE)
+}
+
+packages <- c("psych", "psychometric", "psycho","parameters","semPlot","lavaan","pROC","haven","ggplot2","effsize","gridExtra","ggpurb","dplyr")
+
+ipak(packages)
+
+#test the psychometric properties
+Solo_items <- read_sav("C:/Users/pable/Desktop/Escritorio antiguo/Investigacion/Artículos/IIFE/Solo items.sav")
+dfsem<-as.data.frame(Solo_items)
+
+#explore number of factors
+results_nfactorIIEF<-n_factors(dfsem, rotate = "varimax", fm = "mle", n = NULL)
+plot(results_nfactorIIEF)
+results_nfactorIIEF
+as.data.frame(results_nfactorIIEF)
+summary(results_nfactorIIEF)
+
+#performing SEM CFA
+
+#create the model
+Onefactor<-'IIEF =~ IIFE_1 + IIFE_2 + IIFE_3 + IIFE_4 + IIFE_5'
+
+#fit the model
+CFAone <- cfa(Onefactor,orthogonal=TRUE, data=dfsem, estimator="MLM")
+summary(CFAone, fit.measures=TRUE)
+
+#plot the model
+semPaths(CFAone, intercepts = FALSE,edge.label.cex=1.5, optimizeLatRes = TRUE, groups = "lat",pastel = TRUE, exoVar = FALSE, sizeInt=5,edge.color ="black",esize = 6, label.prop=2,sizeLat = 6,"std", layout="tree")
+
+#explore psychometric properties
+
+IIEF_tetra<-polychoric(dfsem)
+psych::alpha(IIEF_tetra$rho)
+describe(dfsem)
+
+#print figure 2A
+#test and differences between groups
+ggplot <- read_sav("C:/Users/pable/Desktop/Escritorio antiguo/Investigacion/Artículos/IIFE/ggplot.sav")
+View(ggplot)
+
+#prepare data frame
+dfcor<-ggplot
+dfcor$tpio_participante <- as.factor(dfcor$tpio_participante)
+levels(dfcor$tpio_participante) <- c("no disorder", "disorder")
+
+#get the figure
+f1<-ggplot(dfcor,aes(x=dfcor$IIFE_Total, fill=factor(dfcor$tpio_participante)))+
+  geom_density(alpha = 0.5)+scale_fill_brewer(palette ="Set2")+
+  theme_classic()+
+  xlab("IIEF")+
+  theme(legend.position='left')
+f1
+
+#obtein t-test, descriptives and effect siezes.
+t.test(dfcor$IIFE_Total~dfcor$tpio_participante)
+group_by(dfcor, tpio_participante) %>%
+  summarise(
+    count = n(),
+    mean = mean(IIFE_Total, na.rm = TRUE),
+    sd = sd(IIFE_Total, na.rm = TRUE)
+  )
+cohen.d(dfcor$IIFE_Total,dfcor$tpio_participante,na.rm=TRUE)
+
+
+#Obtaining Figure 2B ROC curves
+
+#get and prepare data
+Curvas_Cor_IIFE <- read_sav("C:/Users/pable/Desktop/Escritorio antiguo/Investigacion/Artículos/IIFE/Curvas Cor IIFE.sav")
+dfcor<-Curvas_Cor_IIFE
+
+#get roc curve and explore a modification 
+roc<-roc(dfcor$ED_dic,dfcor$IFEE_TOTAL)
+roc1<-roc(dfcor$ED_dic,dfcor$IFEE_TOTAL,smooth=TRUE)
+plot(roc)
+plot(roc1)
+
+#get some statistical info.
+coods<-(ci.coords(roc1$auc))
+auc(roc)
+plot(ci(roc))
+coords(roc)
+
+#improve the figure.
+rocobj <- plot.roc(dfcor$ED_dic,dfcor$IFEE_TOTAL,main="Confidence intervals", percent=TRUE,ci=TRUE,print.auc=TRUE) 
+ciobj <- ci.se(rocobj, specificities=seq(0, 100, 5))
+plot(ciobj, type="shape", col="#1c61b6AA") # plot as a blue shape
+plot(ci(rocobj, of="thresholds", thresholds="best")) # add one threshold
+umbral<-plot.roc(dfcor$ED_dic,dfcor$IFEE_TOTAL, main="Confidence interval of a threshold", percent=TRUE,ci=TRUE, of="thresholds",thresholds="best",print.thres="best")
+
+#test the sample needed.
+power.roc.test(roc, sig.level = 0.05, 
+               power = NULL, kappa = NULL, alternative = "two.sided",
+               reuse.auc=TRUE, method = bootstrap)
